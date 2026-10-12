@@ -23,7 +23,9 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+       working-directory: proje-asistani-2204
       - run: npx vite build
+       working-directory: proje-asistani-2204
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
