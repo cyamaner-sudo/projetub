@@ -44,3 +44,11 @@ Kullanım, "YZ Kullanım Beyanı" adımına otomatik yazılır.
 2. Depoda Settings > Pages > Build and deployment > Source: **GitHub Actions** seçin.
 3. `main` dalına her yükleme yaptığınızda `.github/workflows/deploy.yml` siteyi derleyip yayınlar.
    Adres: `https://KULLANICI-ADI.github.io/DEPO-ADI/`
+
+## Kaynak tarama (uydurma kaynak yok)
+
+"Kaynak tarama" adımı OpenAlex açık veri tabanında arama yapar. Başlık, yazar, yıl, dergi ve DOI gerçek kayıttan gelir; yapay zekâ kaynak üretmez.
+"Kaynakçaya ekle" ile kayıt APA biçiminde kaynakçaya girer. Kaynaklar adımında "DOI'yi doğrula" Crossref ile başlık ve yılı karşılaştırır.
+Giriş taslağı yalnızca eklenen kaynakların özetlerine dayanır ve her cümlede atıf yapar. Atıf–kaynakça eşleşmesi otomatik denetlenir.
+"Fikir ve taslak" adımındaki tek tıkla yazım, isterseniz önce kaynakları tarar, adayları listeler ve yalnızca sizin seçtiklerinize dayanarak yazar.
+Sınır: veri tabanı her yayını içermez, yalnızca özet görünür (tam metin değil), internet gerekir.

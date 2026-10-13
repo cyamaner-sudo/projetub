@@ -16,6 +16,7 @@ export type StepId =
   | 'setup'
   | 'rules'
   | 'ideas'
+  | 'sources'
   | 'aidecl'
   | TextSectionId
   | 'timeline'
@@ -82,6 +83,10 @@ export interface Reference {
   dateDetail: string;
   /** Tez türü (ör. "Yüksek lisans tezi") */
   thesisType: string;
+  /** Veritabanından gelen kaynaklarda: özet metni (yalnızca dayanak olarak kullanılır, rapora yazılmaz) */
+  abstract?: string;
+  /** Kaynağın nereden geldiği */
+  origin?: 'openalex' | 'manual';
 }
 
 export interface TimelineRow {

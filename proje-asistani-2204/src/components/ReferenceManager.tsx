@@ -1,5 +1,7 @@
 import type { Issue, ProjectState, RefType, Reference } from '../types.ts';
 import { emptyRef, formatRef, inTextCite, sortedRefs } from '../lib/apa.ts';
+import { useState } from 'react';
+import { verifyDoi, type VerifyResult } from '../lib/sources.ts';
 import { btnGhost, btnPrimary, Card, Field, inputCls } from '../ui.tsx';
 import { Checks } from './SectionEditor.tsx';
 
@@ -20,6 +22,12 @@ const CONTAINER_LABEL: Record<RefType, string> = {
 export default function ReferenceManager({ project, issues, update }: Props) {
   const patch = (id: string, f: Partial<Reference>) =>
     update((p) => ({ ...p, references: p.references.map((r) => (r.id === id ? { ...r, ...f } : r)) }));
+  const [checks, setChecks] = useState<Record<string, VerifyResult | 'busy'>>({});
+  const verify = async (r: Reference) => {
+    setChecks((c) => ({ ...c, [r.id]: 'busy' }));
+    const res = await verifyDoi(r);
+    setChecks((c) => ({ ...c, [r.id]: res }));
+  };
   const sorted = sortedRefs(project.references);
   const t = (r: Reference, k: keyof Reference, label: string, ph = '') => (
     <Field label={label}>
@@ -113,6 +121,21 @@ export default function ReferenceManager({ project, issues, update }: Props) {
             <p className="mt-3 rounded-lg bg-slate-50 p-2 text-sm text-slate-800" style={{ fontFamily: 'Times New Roman, serif' }}>
               {formatRef(r).map((s, i) => (s.i ? <em key={i}>{s.t}</em> : <span key={i}>{s.t}</span>))}
             </p>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+              {r.origin === 'openalex' && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-800">Veri tabanından</span>}
+              {r.doi.trim() ? (
+                <button className="text-indigo-700 underline" disabled={checks[r.id] === 'busy'} onClick={() => verify(r)}>
+                  {checks[r.id] === 'busy' ? 'Doğrulanıyor…' : 'DOI\'yi doğrula'}
+                </button>
+              ) : (
+                <span className="text-amber-700">DOI yok: kaynağı elle doğrulayın</span>
+              )}
+              {checks[r.id] && checks[r.id] !== 'busy' && (
+                <span className={(checks[r.id] as VerifyResult).status === 'ok' ? 'text-emerald-700' : 'text-red-700'}>
+                  {(checks[r.id] as VerifyResult).message}
+                </span>
+              )}
+            </div>
             <p className="mt-1 text-xs text-slate-500">
               Metin içi: {inTextCite(r)} &nbsp;·&nbsp; {inTextCite(r, true)}
             </p>

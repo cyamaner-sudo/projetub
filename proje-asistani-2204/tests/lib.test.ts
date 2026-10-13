@@ -225,3 +225,35 @@ test('2026-2027 şablon yapısı', async () => {
   const blob = await buildDocxBlob(p, PROGRAMS['2204-A']);
   assert.ok(blob.size > 3000);
 });
+
+test('kaynak tarama ayrıştırma', async () => {
+  const { parseOpenAlex, rebuildAbstract, splitName, hitToRef, titleSimilarity } = await import('../src/lib/sources.ts');
+  assert.equal(rebuildAbstract({ Su: [0], döngüsü: [1], önemlidir: [2] }), 'Su döngüsü önemlidir');
+  assert.deepEqual(splitName('Ayşe Nur Yılmaz'), { surname: 'Yılmaz', initials: 'AN' });
+  const hits = parseOpenAlex({
+    results: [
+      {
+        id: 'https://openalex.org/W1',
+        doi: 'https://doi.org/10.1234/abc',
+        title: 'Test <i>başlık</i>',
+        publication_year: 2021,
+        authorships: [{ author: { display_name: 'Ayşe Yılmaz' } }, { author: { display_name: 'Can Kaya' } }],
+        primary_location: { source: { display_name: 'Test Dergisi' } },
+        biblio: { volume: '5', issue: '2', first_page: '10', last_page: '20' },
+        abstract_inverted_index: { Özet: [0], metni: [1] },
+        cited_by_count: 7,
+        type: 'article',
+      },
+      { id: 'W2', title: 'Yazarsız', publication_year: 2020, authorships: [] },
+    ],
+  });
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].doi, '10.1234/abc');
+  assert.equal(hits[0].title, 'Test başlık');
+  assert.equal(hits[0].pages, '10-20');
+  const r = hitToRef(hits[0]);
+  assert.equal(r.origin, 'openalex');
+  assert.equal(refToPlain(r), 'Yılmaz, A., & Kaya, C. (2021). Test başlık. Test Dergisi, 5(2), 10–20. https://doi.org/10.1234/abc');
+  assert.ok(titleSimilarity('Su döngüsü ve iklim', 'Su döngüsü ve iklim değişikliği') > 0.9);
+  assert.ok(titleSimilarity('Kuantum fiziği', 'Orman yangınları') < 0.3);
+});

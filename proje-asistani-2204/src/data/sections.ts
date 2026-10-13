@@ -187,6 +187,7 @@ export const STEP_GROUPS: { title: string; steps: { id: StepId; label: string }[
       { id: 'setup', label: 'Program ve alan' },
       { id: 'rules', label: 'Kurallar ve süreç' },
       { id: 'ideas', label: 'Fikir ve taslak' },
+      { id: 'sources', label: 'Kaynak tarama' },
     ],
   },
   {

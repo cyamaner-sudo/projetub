@@ -1,5 +1,6 @@
 import type { AiSettings, Program, ProjectState } from '../types.ts';
 import { LIMITS } from '../data/programs.ts';
+import { inTextCite } from './apa.ts';
 
 export type AiMode = 'jury' | 'questions' | 'clarity' | 'shape' | 'search';
 
@@ -168,6 +169,9 @@ Kesin kurallar:
 - Çıktı düz metindir: markdown, başlık, madde işareti, kalın yazı kullanma. Paragrafları boş satırla ayır. Bölüm başlığını tekrar yazma.
 - Sadece istenen bölümün metnini ver; açıklama, giriş veya kapanış cümlesi ekleme.`;
 
+const GROUNDED_SYSTEM = `Sen, TÜBİTAK 2204 proje raporu yazan öğrencilere kaynak özetlerinden giriş (kaynak taraması) taslağı hazırlayan bir yazım yardımcısısın. Türkçe, akademik ama sade yaz.
+Yalnızca sana verilen kaynak özetlerindeki ve öğrenci notlarındaki bilgileri kullan; kendi bilginden bilgi, sayı, kaynak veya yazar ekleme. Atıfları yalnızca verilen biçimde yaz. Çıktı düz metindir, markdown kullanma.`;
+
 const DRAFT_GUIDE: Record<DraftId, string> = {
   title: 'Proje başlığı: tek cümle, en fazla 15 kelime, projenin içeriğini yansıtsın. Yalnızca başlığı yaz.',
   abstract:
@@ -224,6 +228,32 @@ export async function askDraft(settings: AiSettings, program: Program, project: 
   if (!settings.apiKey.trim()) throw new Error('Önce ayarlardan Gemini API anahtarınızı girin.');
   if (!(project.ideaNote ?? '').trim() && !project.texts.title.trim() && !project.texts.aim.trim())
     throw new Error('Önce "Fikir ve taslak" adımında proje fikrinizi yazın.');
+  const src = project.references.filter((r) => (r.abstract ?? '').trim());
+  const sourced: DraftId[] = ['intro', 'aim', 'method', 'discussion'];
+  if (sourced.includes(id) && src.length > 0) {
+    const block = src
+      .map((r, i) => `[K${i + 1}] Atıf biçimi: ${inTextCite(r)} | Başlık: ${r.title}\nÖzet: ${(r.abstract ?? '').slice(0, 1400)}`)
+      .join('\n\n');
+    const base = id === 'intro' ? DRAFT_GUIDE.intro.split('Hiçbir çalışmayı')[0] : DRAFT_GUIDE[id];
+    const guided = `${base}
+
+Aşağıdaki GERÇEK kaynakların özetlerinden ve öğrencinin notlarından yararlanarak yaz.
+
+Kurallar:
+- Bir kaynağa dayanan her cümlenin sonunda o kaynağın atıf biçimini aynen yaz, örn. ${inTextCite(src[0])}. Yalnızca aşağıdaki listedeki atıf biçimlerini kullan.
+- Bir kaynak hakkında yalnızca özetinde açıkça yazanları söyle. Özette olmayan bulgu, sayı veya yorum ekleme. Özeti kopyalama, kendi cümlelerinle yeniden anlat.
+- Öğrencinin kendi bilgileri için yalnızca ÖĞRENCİNİN NOTLARI'ndakileri kullan. Öğrenci veri notu vermediyse hiçbir bulgu veya sonuç yazma.
+- Bilmediğin yerlere [DOLDUR: ...] koy. Listede olmayan hiçbir kaynağa atıf yapma.
+- Düz metin yaz, markdown kullanma.
+
+--- Kaynaklar ---
+${block}
+
+--- Bağlam ---
+${draftContext(program, project)}`;
+    const text = await callGemini(settings, GROUNDED_SYSTEM, guided, 3000, 0.3);
+    return text.replace(/\*\*/g, '').trim();
+  }
   const user = `${DRAFT_GUIDE[id]}\n\n--- Bağlam ---\n${draftContext(program, project)}`;
   const out = await callGemini(settings, DRAFT_SYSTEM, user, 2500, 0.5);
   return out.replace(/^```[a-z]*\n?|```$/g, '').replace(/\*\*/g, '').trim();
@@ -254,4 +284,28 @@ export async function askTimelineDraft(
       const e = Math.min(m, Math.max(s, Math.round(Number(r.end) || s)));
       return { task: String(r.task).trim(), start: s, end: e };
     });
+}
+
+/** Fikir notundan veri tabanında aranacak 3 arama sorgusu önerir (Türkçe ve İngilizce). Yapay zekâ kaynak üretmez, yalnızca arama kelimesi önerir. */
+export async function askSearchQueries(settings: AiSettings, program: Program, project: ProjectState): Promise<string[]> {
+  const fallback = [project.texts.keywords, project.texts.title, project.ideaNote ?? '']
+    .map((x) => x.replace(/\s+/g, ' ').trim().slice(0, 120))
+    .filter((x) => x.length >= 3)
+    .slice(0, 2);
+  if (!settings.apiKey.trim()) return fallback;
+  try {
+    const user = `Aşağıdaki proje için bilimsel veri tabanında (OpenAlex) aranacak 3 kısa arama sorgusu öner. Biri Türkçe, ikisi İngilizce olsun. Her sorgu 2-6 kelime, konunun çekirdek kavramlarını içersin. Yalnızca JSON dizisi döndür, örn. ["sorgu 1","query 2","query 3"]. Kaynak, yazar veya makale adı yazma.
+
+--- Bağlam ---
+${draftContext(program, project)}`;
+    const raw = await callGemini(settings, DRAFT_SYSTEM, user, 400, 0.2);
+    const arr = JSON.parse(raw.slice(raw.indexOf('['), raw.lastIndexOf(']') + 1)) as unknown;
+    if (Array.isArray(arr)) {
+      const qs = arr.filter((q): q is string => typeof q === 'string' && q.trim().length >= 3).map((q) => q.trim()).slice(0, 3);
+      if (qs.length) return qs;
+    }
+  } catch {
+    /* anahtar kelimelerle devam et */
+  }
+  return fallback;
 }

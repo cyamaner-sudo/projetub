@@ -7,6 +7,7 @@ import { DEFAULT_MODEL, loadAi, loadProject, normalizeProject, saveAi, saveProje
 import { btnGhost, btnPrimary, inputCls } from './ui.tsx';
 import Setup from './components/Setup.tsx';
 import AiDeclStep from './components/AiDeclStep.tsx';
+import SourceSearch from './components/SourceSearch.tsx';
 import IdeasStep from './components/IdeasStep.tsx';
 import Rules from './components/Rules.tsx';
 import SectionEditor from './components/SectionEditor.tsx';
@@ -69,6 +70,8 @@ export default function App() {
   else if (step === 'ideas')
     body = <IdeasStep project={project} update={update} ai={ai} openSettings={() => { setDraftAi(ai); setShowSettings(true); }} />;
   else if (step === 'aidecl') body = <AiDeclStep project={project} issues={issues} update={update} />;
+  else if (step === 'sources')
+    body = <SourceSearch project={project} update={update} ai={ai} openSettings={() => { setDraftAi(ai); setShowSettings(true); }} />;
   else if (step === 'timeline') body = <TimelineEditor project={project} issues={issues} update={update} />;
   else if (step === 'refs') body = <ReferenceManager project={project} issues={issues} update={update} />;
   else if (step === 'ethics') body = <EthicsStep project={project} update={update} />;

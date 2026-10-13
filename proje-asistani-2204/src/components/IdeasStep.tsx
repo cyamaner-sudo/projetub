@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import type { AiSettings, ProjectState } from '../types.ts';
 import { PROGRAMS } from '../data/programs.ts';
-import { askIdeas, askSkeleton, askDraft, askTimelineDraft, DRAFT_LABEL, DRAFT_ORDER, type DraftId } from '../lib/ai.ts';
+import { askIdeas, askSkeleton, askDraft, askTimelineDraft, askSearchQueries, DRAFT_LABEL, DRAFT_ORDER, type DraftId } from '../lib/ai.ts';
 import { setText, withAiUse } from '../lib/draftApply.ts';
 import { uid } from '../lib/text.ts';
+import { hitToRef, searchSources, type SourceHit } from '../lib/sources.ts';
 import { TEXT_SECTION_IDS } from '../data/sections.ts';
 import { btnPrimary, Card, Field, inputCls } from '../ui.tsx';
 import { Md } from './AiCoach.tsx';
@@ -57,10 +58,10 @@ export default function IdeasStep({ project, update, ai, openSettings }: Props) 
     }
   };
 
-  const generateAll = async () => {
+  const writeAll = async (start: ProjectState) => {
     setAllBusy(true);
     setError('');
-    let cur: ProjectState = project;
+    let cur: ProjectState = start;
     const done: (DraftId | 'timeline')[] = [];
     try {
       const jobs: (DraftId | 'timeline')[] = [...DRAFT_ORDER];
@@ -96,6 +97,68 @@ export default function IdeasStep({ project, update, ai, openSettings }: Props) 
     } finally {
       setAllBusy(false);
     }
+  };
+
+  const [scanFirst, setScanFirst] = useState(true);
+  const [cands, setCands] = useState<SourceHit[] | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [usedQueries, setUsedQueries] = useState<string[]>([]);
+  const keyOf = (h: SourceHit) => h.doi || h.id || h.title;
+
+  const startAll = async () => {
+    const sourced = project.references.filter((r) => (r.abstract ?? '').trim()).length;
+    if (!scanFirst || sourced >= 4) {
+      await writeAll(project);
+      return;
+    }
+    setAllBusy(true);
+    setError('');
+    setCands(null);
+    try {
+      setProgress('Arama kelimeleri hazırlanıyor…');
+      const queries = await askSearchQueries(ai, prog, project);
+      if (queries.length === 0) throw new Error('Arama için fikir notu veya anahtar kelime gerekli. Önce fikrinizi yazın.');
+      setUsedQueries(queries);
+      const lists: SourceHit[][] = [];
+      for (let i = 0; i < queries.length; i++) {
+        setProgress(`Kaynaklar taranıyor (${i + 1}/${queries.length}): ${queries[i]}`);
+        try {
+          lists.push(await searchSources(queries[i], { fromYear: 2012, onlyArticles: true }));
+        } catch (e) {
+          if (i === 0 && queries.length === 1) throw e;
+        }
+      }
+      const seen = new Set<string>();
+      const merged: SourceHit[] = [];
+      for (let rank = 0; rank < 10; rank++)
+        for (const l of lists) {
+          const h = l[rank];
+          if (!h) continue;
+          const k = keyOf(h).toLowerCase();
+          const dup = seen.has(k) || project.references.some((r) => r.doi && h.doi && r.doi.toLowerCase() === h.doi.toLowerCase());
+          if (dup) continue;
+          seen.add(k);
+          merged.push(h);
+        }
+      const top = merged.slice(0, 18);
+      if (top.length === 0) throw new Error('Kaynak bulunamadı. "Kaynak tarama" adımında kendi kelimelerinizle arayın veya kaynaksız devam edin.');
+      setCands(top);
+      setPicked(new Set());
+      setProgress(`${top.length} aday kaynak bulundu. İlgili olanları seçin.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Bilinmeyen hata');
+      setProgress('');
+    } finally {
+      setAllBusy(false);
+    }
+  };
+
+  const continueWithPicked = async () => {
+    const chosen = (cands ?? []).filter((h) => picked.has(keyOf(h)));
+    const withRefs: ProjectState = { ...project, references: [...project.references, ...chosen.map(hitToRef)] };
+    update(() => withRefs);
+    setCands(null);
+    await writeAll(withRefs);
   };
 
   const noKey = !ai.apiKey.trim();
@@ -168,13 +231,74 @@ export default function IdeasStep({ project, update, ai, openSettings }: Props) 
           />
         </Field>
         <label className="mt-2 flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={scanFirst} onChange={(e) => setScanFirst(e.target.checked)} />
+          Önce kaynakları tara, seçtiklerime dayanarak yaz (önerilir)
+        </label>
+        <label className="mt-1 flex items-center gap-2 text-sm">
           <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} />
           Dolu bölümlerin üzerine de yaz
         </label>
-        <button className={`${btnPrimary} mt-2`} disabled={allBusy || noKey} onClick={generateAll}>
-          {allBusy ? 'Yazılıyor…' : 'Tüm bölümleri tek tıkla oluştur'}
+        <button className={`${btnPrimary} mt-2`} disabled={allBusy || noKey} onClick={startAll}>
+          {allBusy ? 'Çalışıyor…' : 'Tüm bölümleri tek tıkla oluştur'}
         </button>
         {progress && <p className="mt-2 text-sm text-slate-700">{progress}</p>}
+        {cands && (
+          <div className="mt-3 space-y-2 rounded-lg border border-slate-200 p-3">
+            <p className="text-xs text-slate-600">
+              Aranan sorgular: {usedQueries.join(' · ')}. Konunuzla gerçekten ilgili olanları işaretleyin (başlığa değil özete bakın). Hiçbiri uygun değilse kaynaksız devam edebilirsiniz; Giriş yer tutuculu kalır.
+            </p>
+            <ul className="max-h-96 space-y-2 overflow-y-auto">
+              {cands.map((h) => {
+                const k = keyOf(h);
+                return (
+                  <li key={k}>
+                    <label className="flex cursor-pointer gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={picked.has(k)}
+                        onChange={(e) =>
+                          setPicked((p) => {
+                            const n = new Set(p);
+                            if (e.target.checked) n.add(k);
+                            else n.delete(k);
+                            return n;
+                          })
+                        }
+                      />
+                      <span className="min-w-0">
+                        <span className="font-medium">{h.title}</span>
+                        <span className="block text-xs text-slate-600">
+                          {h.authors.slice(0, 3).map((a) => a.surname).join(', ')}
+                          {h.authors.length > 3 ? ' vd.' : ''} · {h.year} · {h.venue || 'dergi bilgisi yok'} · {h.cited} atıf
+                        </span>
+                        <span className="block text-xs text-slate-500">{h.abstract.slice(0, 220)}…</span>
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="flex flex-wrap gap-2">
+              <button className={btnPrimary} disabled={allBusy || picked.size === 0} onClick={continueWithPicked}>
+                Seçilen {picked.size} kaynakla yazmaya başla
+              </button>
+              <button
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                disabled={allBusy}
+                onClick={() => {
+                  setCands(null);
+                  void writeAll(project);
+                }}
+              >
+                Kaynaksız devam et
+              </button>
+              <button className="px-3 py-2 text-sm underline" onClick={() => { setCands(null); setProgress(''); }}>
+                İptal
+              </button>
+            </div>
+          </div>
+        )}
         <p className="mt-2 text-xs text-slate-500">
           Beyan: Yapay zekâ kullanımı "YZ Kullanım Beyanı" adımına otomatik yazılır. İnsan müdahalesi kısmını siz doldurun. Kaynaklar adımındaki kaynakları kendiniz bulup ekleyin.
         </p>
