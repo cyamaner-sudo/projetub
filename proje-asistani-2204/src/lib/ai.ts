@@ -1,6 +1,8 @@
 import type { AiSettings, Program, ProjectState } from '../types.ts';
 import { LIMITS } from '../data/programs.ts';
 import { inTextCite } from './apa.ts';
+import { selectPages, verifyEvidence } from './docs.ts';
+import type { Evidence, Reference } from '../types.ts';
 
 export type AiMode = 'jury' | 'questions' | 'clarity' | 'shape' | 'search';
 
@@ -228,11 +230,16 @@ export async function askDraft(settings: AiSettings, program: Program, project: 
   if (!settings.apiKey.trim()) throw new Error('Önce ayarlardan Gemini API anahtarınızı girin.');
   if (!(project.ideaNote ?? '').trim() && !project.texts.title.trim() && !project.texts.aim.trim())
     throw new Error('Önce "Fikir ve taslak" adımında proje fikrinizi yazın.');
-  const src = project.references.filter((r) => (r.abstract ?? '').trim());
+  const src = project.references.filter((r) => (r.abstract ?? '').trim() || (r.evidence?.length ?? 0) > 0);
   const sourced: DraftId[] = ['intro', 'aim', 'method', 'discussion'];
   if (sourced.includes(id) && src.length > 0) {
     const block = src
-      .map((r, i) => `[K${i + 1}] Atıf biçimi: ${inTextCite(r)} | Başlık: ${r.title}\nÖzet: ${(r.abstract ?? '').slice(0, 1400)}`)
+      .map((r, i) => {
+        const head = `[K${i + 1}] Atıf biçimi: ${inTextCite(r)} | Başlık: ${r.title}`;
+        if (r.evidence?.length)
+          return `${head}\nKaynak metninden doğrulanmış bilgiler:\n${r.evidence.map((e) => `- ${e.claim} (s. ${e.page}) [alıntı: "${e.quote.slice(0, 200)}"]`).join('\n')}`;
+        return `${head}\nÖzet: ${(r.abstract ?? '').slice(0, 1400)}`;
+      })
       .join('\n\n');
     const base = id === 'intro' ? DRAFT_GUIDE.intro.split('Hiçbir çalışmayı')[0] : DRAFT_GUIDE[id];
     const guided = `${base}
@@ -308,4 +315,35 @@ ${draftContext(program, project)}`;
     /* anahtar kelimelerle devam et */
   }
   return fallback;
+}
+
+const EVIDENCE_SYSTEM = `Sen bir kaynak okuma yardımcısısın. Sana bir makale veya tezin sayfa etiketli metni verilecek. Görevin, öğrencinin konusuyla ilgili olan ve metinde AÇIKÇA yazan bilgileri çıkarmak.
+Kurallar:
+- Her bilgi için "quote" alanına metinden BİREBİR kopyalanmış, 40-300 karakterlik bir cümle veya cümle parçası yaz. Kelimeyi değiştirme, çevirme, kısaltma veya birleştirme yapma.
+- "claim" alanına bu alıntının söylediğini tek bir kısa Türkçe cümleyle yaz. Alıntıda olmayan bir şey ekleme.
+- Metinde olmayan bilgiyi, sayıyı veya sonucu yazma. Emin değilsen o maddeyi atla.
+- Yalnızca JSON dizisi döndür: [{"claim":"...","quote":"..."}]. En fazla 8 madde.`;
+
+/** Yüklenen kaynağın metninden kanıt çıkarır. Alıntısı dosya metninde birebir bulunmayan her madde atılır. */
+export async function askEvidence(
+  settings: AiSettings,
+  program: Program,
+  project: ProjectState,
+  ref: Reference,
+  pages: string[],
+): Promise<{ kept: Evidence[]; dropped: number }> {
+  if (!settings.apiKey.trim()) throw new Error('Önce ayarlardan Gemini API anahtarınızı girin.');
+  const topic = [project.texts.title, project.texts.keywords, project.ideaNote ?? '', project.texts.aim].join(' ');
+  const chosen = selectPages(pages, topic, 90000);
+  const body = chosen.map((p) => `[Sayfa ${p.index + 1}]\n${p.text}`).join('\n\n');
+  const user = `Öğrencinin konusu: ${topic.slice(0, 600) || '(belirtilmedi)'}\nProgram: ${program.id}\n\nKaynak: ${ref.title}\n\n--- Metin ---\n${body}`;
+  const raw = await callGemini(settings, EVIDENCE_SYSTEM, user, 3500, 0.1);
+  let arr: unknown;
+  try {
+    arr = JSON.parse(raw.slice(raw.indexOf('['), raw.lastIndexOf(']') + 1));
+  } catch {
+    throw new Error('Kaynaktan bilgi çıkarılamadı. Tekrar deneyin.');
+  }
+  if (!Array.isArray(arr)) throw new Error('Kaynaktan bilgi çıkarılamadı. Tekrar deneyin.');
+  return verifyEvidence(pages, arr as { claim?: unknown; quote?: unknown }[]);
 }

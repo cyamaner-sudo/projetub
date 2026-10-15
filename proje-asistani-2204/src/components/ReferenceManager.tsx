@@ -122,6 +122,7 @@ export default function ReferenceManager({ project, issues, update }: Props) {
               {formatRef(r).map((s, i) => (s.i ? <em key={i}>{s.t}</em> : <span key={i}>{s.t}</span>))}
             </p>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+              {r.origin === 'upload' && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-800">Yüklenen dosyadan</span>}
               {r.origin === 'openalex' && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-800">Veri tabanından</span>}
               {r.doi.trim() ? (
                 <button className="text-indigo-700 underline" disabled={checks[r.id] === 'busy'} onClick={() => verify(r)}>

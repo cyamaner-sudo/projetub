@@ -5,6 +5,7 @@ import { askDraft } from '../lib/ai.ts';
 import { setText, withAiUse } from '../lib/draftApply.ts';
 import { hitToRef, searchSources, type SourceHit } from '../lib/sources.ts';
 import { parseKeywords } from '../lib/text.ts';
+import UploadSources from './UploadSources.tsx';
 import { btnGhost, btnPrimary, Card, Field, inputCls } from '../ui.tsx';
 
 interface Props {
@@ -46,7 +47,7 @@ export default function SourceSearch({ project, update, ai, openSettings }: Prop
 
   const add = (h: SourceHit) => update((p) => ({ ...p, references: [...p.references, hitToRef(h)] }));
 
-  const withAbstract = project.references.filter((r) => (r.abstract ?? '').trim());
+  const withAbstract = project.references.filter((r) => (r.abstract ?? '').trim() || (r.evidence?.length ?? 0) > 0);
 
   const writeIntro = async () => {
     setIntroBusy(true);
@@ -70,7 +71,9 @@ export default function SourceSearch({ project, update, ai, openSettings }: Prop
         Ancak veri tabanı her kaynağı içermez (özellikle Türkçe yayınların bir kısmı eksik olabilir). Tam metni siz okuyun, burada yalnızca özet görürsünüz.
       </p>
 
-      <Card>
+      <UploadSources project={project} update={update} ai={ai} openSettings={openSettings} />
+
+      <Card title="Veri tabanında ara">
         <Field label="Arama (anahtar kelimeler; Türkçe ve İngilizce deneyin)">
           <input
             className={inputCls}
@@ -146,7 +149,7 @@ export default function SourceSearch({ project, update, ai, openSettings }: Prop
 
       <Card title="Eklediğiniz kaynaklardan giriş taslağı">
         <p className="mb-2 text-xs text-slate-500">
-          {withAbstract.length} kaynağın özeti var. Taslak yalnızca bu özetlere dayanır, her cümlede ilgili kaynağa atıf yapar ve listede olmayan kaynak kullanmaz.
+          {withAbstract.length} kaynağın özeti veya dosyadan çıkarılmış doğrulanmış bilgisi var. Taslak yalnızca bunlara dayanır, her cümlede ilgili kaynağa atıf yapar ve listede olmayan kaynak kullanmaz.
           Özeti okumak, kaynağı okumak değildir: önemli iddiaları kaynağın kendisinden doğrulayın.
         </p>
         {!ai.apiKey.trim() ? (

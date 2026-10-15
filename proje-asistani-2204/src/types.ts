@@ -63,6 +63,15 @@ export interface Author {
 
 export type RefType = 'article' | 'book' | 'web' | 'thesis';
 
+export interface Evidence {
+  /** Kaynağın söylediği şeyin kısa Türkçe özeti */
+  claim: string;
+  /** Dosya metninde birebir bulunan alıntı */
+  quote: string;
+  /** Alıntının bulunduğu sayfa (program bulur, yapay zekâya sorulmaz) */
+  page: number;
+}
+
 export interface Reference {
   id: string;
   type: RefType;
@@ -86,7 +95,9 @@ export interface Reference {
   /** Veritabanından gelen kaynaklarda: özet metni (yalnızca dayanak olarak kullanılır, rapora yazılmaz) */
   abstract?: string;
   /** Kaynağın nereden geldiği */
-  origin?: 'openalex' | 'manual';
+  origin?: 'openalex' | 'upload' | 'manual';
+  /** Yüklenen dosyadan çıkarılan, alıntısı dosya metninde doğrulanmış bilgiler */
+  evidence?: Evidence[];
 }
 
 export interface TimelineRow {

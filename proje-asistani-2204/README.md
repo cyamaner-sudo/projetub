@@ -52,3 +52,10 @@ Kullanım, "YZ Kullanım Beyanı" adımına otomatik yazılır.
 Giriş taslağı yalnızca eklenen kaynakların özetlerine dayanır ve her cümlede atıf yapar. Atıf–kaynakça eşleşmesi otomatik denetlenir.
 "Fikir ve taslak" adımındaki tek tıkla yazım, isterseniz önce kaynakları tarar, adayları listeler ve yalnızca sizin seçtiklerinize dayanarak yazar.
 Sınır: veri tabanı her yayını içermez, yalnızca özet görünür (tam metin değil), internet gerekir.
+
+## Kendi dosyalarınızdan kaynak oluşturma
+
+"Kaynak tarama" adımında bilgisayarınızdan PDF veya TXT yükleyebilirsiniz. Dosya yalnızca tarayıcıda okunur.
+DOI bulunursa künye Crossref'ten alınır, bulunmazsa elle girilir. "Kaynaktan bilgi çıkar" dosyadan bilgi çıkarır;
+her bilginin alıntısı dosya metninde birebir aranır, bulunmayanlar atılır ve sayfa numarası programca bulunur.
+PDF okuyucu (pdf.js) cdnjs'den yüklenir, internet gerekir. Taranmış (görüntü) PDF'lerden metin okunamaz.

@@ -257,3 +257,36 @@ test('kaynak tarama ayrıştırma', async () => {
   assert.ok(titleSimilarity('Su döngüsü ve iklim', 'Su döngüsü ve iklim değişikliği') > 0.9);
   assert.ok(titleSimilarity('Kuantum fiziği', 'Orman yangınları') < 0.3);
 });
+
+test('yüklenen dosya: DOI, alıntı doğrulama, Crossref', async () => {
+  const { findDoi, locateQuote, verifyEvidence, selectPages, referenceFromCrossref } = await import('../src/lib/docs.ts');
+  assert.equal(findDoi('Makale. https://doi.org/10.1016/j.test.2020.01.001.'), '10.1016/j.test.2020.01.001');
+  assert.equal(findDoi('doi yok'), '');
+  const pages = ['Giriş sayfası. Toprakta mikroplastik\nmiktarı arttıkça bitki bü-\nyümesi yavaşlamıştır ve bu etki anlamlıdır.', 'İkinci sayfa başka bir şey söyler.'];
+  assert.equal(locateQuote(pages, 'toprakta mikroplastik miktarı arttıkça bitki büyümesi yavaşlamıştır'), 1);
+  assert.equal(locateQuote(pages, 'toprakta mikroplastik bitki büyümesini hızlandırmıştır kesinlikle'), 0);
+  const { kept, dropped } = verifyEvidence(pages, [
+    { claim: 'Büyüme yavaşlar', quote: 'Toprakta mikroplastik miktarı arttıkça bitki büyümesi yavaşlamıştır' },
+    { claim: 'Uydurma', quote: 'Bu cümle dosyada hiç geçmiyor ve uydurulmuştur.' },
+    { claim: '', quote: 'boş iddia ama uzun bir alıntı metni burada' },
+  ]);
+  assert.equal(kept.length, 1);
+  assert.equal(kept[0].page, 1);
+  assert.equal(dropped, 2);
+  const long = Array.from({ length: 10 }, (_, i) => (i === 7 ? 'mikroplastik toprak etkisi '.repeat(40) : 'alakasız metin '.repeat(40)));
+  const sel = selectPages(long, 'mikroplastik toprak', 1500);
+  assert.ok(sel.some((p) => p.index === 7));
+  const ref = referenceFromCrossref({
+    title: ['Test <b>makale</b>'],
+    author: [{ given: 'Ayşe Nur', family: 'Yılmaz' }],
+    'container-title': ['Dergi'],
+    volume: '3',
+    issue: '1',
+    page: '5-9',
+    type: 'journal-article',
+    issued: { 'date-parts': [[2022]] },
+    DOI: '10.1/abc',
+  });
+  assert.equal(refToPlain(ref!), 'Yılmaz, A. N. (2022). Test makale. Dergi, 3(1), 5–9. https://doi.org/10.1/abc');
+  assert.equal(referenceFromCrossref({ title: ['x'] }), null);
+});
